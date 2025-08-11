@@ -178,13 +178,22 @@ function monthGrid(year: number, monthIdx0: number) {
 /*********************************
  * 🧩 UI Bits
  *********************************/
-function Badge({ children, tone = "stone" as "stone" | "green" | "amber" }) {
+type BadgeProps = {
+  children: React.ReactNode;
+  tone?: "stone" | "green" | "amber";
+};
+
+function Badge({ children, tone = "stone" }: BadgeProps) {
   const map: Record<string, string> = {
     stone: "bg-stone-100 text-stone-700",
     green: "bg-green-100 text-green-700",
     amber: "bg-amber-100 text-amber-800",
   };
-  return <span className={`px-2 py-1 rounded-full text-xs font-medium ${map[tone]}`}>{children}</span>;
+  return (
+    <span className={`px-2 py-1 rounded-full text-xs font-medium ${map[tone]}`}>
+      {children}
+    </span>
+  );
 }
 
 function Header() {

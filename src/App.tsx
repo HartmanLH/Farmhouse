@@ -29,7 +29,7 @@ function PasswordGate({ children }: PasswordGateProps) {
   if (ok) return <>{children}</>;
   return (
     <div className="min-h-screen flex items-center justify-center bg-stone-50 p-6">
-      <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+      <div className="max-w-screen-xl mx-auto p-6 space-y-6">
         <h1 className="text-2xl font-semibold">Family Farmhouse</h1>
         <p className="text-sm text-stone-600">Enter the family password to view and make reservations.</p>
         <form onSubmit={handle} className="space-y-3">

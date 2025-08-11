@@ -3,6 +3,7 @@ import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
 /* ============================================================
    Family Farmhouse — Reservations + Contacts (Supabase)
+   Centered layout with equal margins on both sides
    ============================================================ */
 
 /* 🔐 Password Gate */
@@ -29,7 +30,7 @@ function PasswordGate({ children }: PasswordGateProps) {
   if (ok) return <>{children}</>;
   return (
     <div className="min-h-screen flex items-center justify-center bg-stone-50 p-6">
-      <div className="max-w-screen-xl mx-auto p-6 space-y-6">
+      <div className="max-w-md w-full bg-white shadow-xl rounded-2xl p-6 space-y-4">
         <h1 className="text-2xl font-semibold">Family Farmhouse</h1>
         <p className="text-sm text-stone-600">Enter the family password to view and make reservations.</p>
         <form onSubmit={handle} className="space-y-3">
@@ -52,7 +53,7 @@ function PasswordGate({ children }: PasswordGateProps) {
 export type Reservation = {
   id: string;
   name: string;
-  room: string; // must match one in ROOMS
+  room: string;
   start_date: string; // YYYY-MM-DD inclusive
   end_date: string; // YYYY-MM-DD checkout (non-inclusive)
   status: "definitely" | "hopefully";
@@ -69,7 +70,7 @@ export type Contact = {
   created_at?: string;
 };
 
-/* Rooms (rename later as you like) */
+/* Rooms (rename later) */
 const ROOMS = [
   "Queen Next to Bathroom",
   "The One With the Sleeping Porch",
@@ -258,6 +259,11 @@ function Modal({ open, onClose, children }: { open: boolean; onClose: () => void
   );
 }
 
+/* Centering helper: a centered lane with equal margins */
+function Section({ children }: { children: React.ReactNode }) {
+  return <div className="w-full max-w-screen-2xl mx-auto">{children}</div>;
+}
+
 /* Header + simple pages */
 type Page = "reservations" | "contacts";
 function Header({ page, setPage }: { page: Page; setPage: (p: Page) => void }) {
@@ -365,8 +371,8 @@ function ReservationForm({
   };
 
   return (
-    <div className="space-y-3">
-      <form onSubmit={handle} className="grid grid-cols-1 md:grid-cols-6 gap-3 items-end bg-white p-4 rounded-2xl shadow">
+    <div className="space-y-3 w-full">
+      <form onSubmit={handle} className="w-full grid grid-cols-1 md:grid-cols-6 gap-3 items-end bg-white p-4 rounded-2xl shadow">
         <div className="md:col-span-2">
           <label className="text-xs text-stone-600">Your name</label>
           <input
@@ -466,42 +472,44 @@ function RoomBoard({
 
   return (
     <>
-      <div className="grid md:grid-cols-2 gap-4">
-        {ROOMS.map((room) => (
-          <div key={room} className="bg-white rounded-2xl shadow p-4">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="font-semibold">{room}</h3>
-              <span className="text-xs text-stone-500">{grouped[room]?.length || 0} reservations</span>
+      <div className="w-full">
+        <div className="grid md:grid-cols-2 gap-4">
+          {ROOMS.map((room) => (
+            <div key={room} className="bg-white rounded-2xl shadow p-4">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="font-semibold">{room}</h3>
+                <span className="text-xs text-stone-500">{grouped[room]?.length || 0} reservations</span>
+              </div>
+              <ul className="space-y-2">
+                {(grouped[room] || []).map((r) => (
+                  <li key={r.id} className="border rounded-xl px-3 py-2 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-medium truncate">
+                        {fmt(r.start_date)} → {fmt(r.end_date)}
+                      </div>
+                      <div className="text-sm text-stone-600 truncate">
+                        {r.name}
+                        {r.notes ? ` — ${r.notes}` : ""}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Badge tone={r.status === "definitely" ? "green" : "stone"}>
+                        {r.status === "definitely" ? "definite" : "hopeful"}
+                      </Badge>
+                      <button onClick={() => setEditing(r)} className="text-xs text-stone-700 hover:underline">
+                        edit
+                      </button>
+                      <button onClick={() => onRemove(r.id)} className="text-xs text-red-600 hover:underline" title="Delete reservation">
+                        delete
+                      </button>
+                    </div>
+                  </li>
+                ))}
+                {!grouped[room]?.length && <li className="text-sm text-stone-500">No reservations yet.</li>}
+              </ul>
             </div>
-            <ul className="space-y-2">
-              {(grouped[room] || []).map((r) => (
-                <li key={r.id} className="border rounded-xl px-3 py-2 flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="font-medium truncate">
-                      {fmt(r.start_date)} → {fmt(r.end_date)}
-                    </div>
-                    <div className="text-sm text-stone-600 truncate">
-                      {r.name}
-                      {r.notes ? ` — ${r.notes}` : ""}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Badge tone={r.status === "definitely" ? "green" : "stone"}>
-                      {r.status === "definitely" ? "definite" : "hopeful"}
-                    </Badge>
-                    <button onClick={() => setEditing(r)} className="text-xs text-stone-700 hover:underline">
-                      edit
-                    </button>
-                    <button onClick={() => onRemove(r.id)} className="text-xs text-red-600 hover:underline" title="Delete reservation">
-                      delete
-                    </button>
-                  </div>
-                </li>
-              ))}
-              {!grouped[room]?.length && <li className="text-sm text-stone-500">No reservations yet.</li>}
-            </ul>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
       <EditDialog editing={editing} onClose={() => setEditing(null)} onEdited={onEdited} />
     </>
@@ -663,7 +671,7 @@ function MasterCalendar({
   };
 
   return (
-    <div className="bg-white rounded-2xl shadow p-3 sm:p-4 space-y-3">
+    <div className="w-full bg-white rounded-2xl shadow p-3 sm:p-4 space-y-3">
       <div className="flex items-center justify-between gap-2">
         <button
           className="px-3 py-1 rounded-lg border"
@@ -891,19 +899,24 @@ export default function App() {
 
   return (
     <PasswordGate>
-      <div className="min-h-screen bg-stone-50">
-        <div className="max-w-6xl mx-auto p-6 space-y-6">
+      {/* page shell expands; sections center themselves */}
+      <div className="w-full px-4 sm:px-6 lg:px-8 py-6 space-y-8 bg-stone-50 min-h-screen">
+        <Section>
           <Header page={page} setPage={setPage} />
+        </Section>
 
-          {page === "reservations" ? (
-            <>
+        {page === "reservations" ? (
+          <>
+            <Section>
               <section className="space-y-3">
                 <h2 className="text-lg font-semibold">
                   Master calendar <span className="text-sm font-normal text-stone-500">(tap a date to reserve)</span>
                 </h2>
                 <MasterCalendar rows={rows} onClickDate={openReserveForDate} />
               </section>
+            </Section>
 
+            <Section>
               <section className="space-y-3">
                 <h2 className="text-lg font-semibold">Make a reservation</h2>
                 {loading ? (
@@ -914,7 +927,9 @@ export default function App() {
                   <ReservationForm existing={rows} onAdd={onAdd} />
                 )}
               </section>
+            </Section>
 
+            <Section>
               <section className="space-y-3">
                 <h2 className="text-lg font-semibold">Reservations by room</h2>
                 {loading ? (
@@ -925,28 +940,33 @@ export default function App() {
                   <RoomBoard rows={rows} onRemove={onRemove} onEdited={refresh} />
                 )}
               </section>
+            </Section>
 
-              <Modal open={reserveOpen} onClose={() => setReserveOpen(false)}>
-                <h3 className="text-lg font-semibold mb-3">Reserve these dates</h3>
-                <ReservationForm
-                  existing={rows}
-                  onAdd={async (r) => {
-                    await onAdd(r);
-                    setReserveOpen(false);
-                  }}
-                  defaultStart={presetStart}
-                  defaultEnd={presetEnd}
-                />
-              </Modal>
-            </>
-          ) : (
+            <Modal open={reserveOpen} onClose={() => setReserveOpen(false)}>
+              <h3 className="text-lg font-semibold mb-3">Reserve these dates</h3>
+              <ReservationForm
+                existing={rows}
+                onAdd={async (r) => {
+                  await onAdd(r);
+                  setReserveOpen(false);
+                }}
+                defaultStart={presetStart}
+                defaultEnd={presetEnd}
+              />
+            </Modal>
+          </>
+        ) : (
+          <Section>
             <ContactsPage />
-          )}
+          </Section>
+        )}
 
+        <Section>
           <p className="text-xs text-stone-500">
-            Storage: {SB_URL && SB_KEY ? "Supabase (shared)" : "localStorage (demo)"}. Checkout is on your departure date.
+            Storage: {SB_URL && SB_KEY ? "Supabase (shared)" : "localStorage (demo)"}.
+            {" "}Checkout is on your departure date.
           </p>
-        </div>
+        </Section>
       </div>
     </PasswordGate>
   );

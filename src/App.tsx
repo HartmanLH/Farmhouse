@@ -4,13 +4,14 @@ import { createClient, SupabaseClient } from "@supabase/supabase-js";
 /*********************************
  * Family Farmhouse Reservations — Supabase Edition
  *
- * What’s new
- * - Shared storage via Supabase (no more per-browser only)
- * - Availability: click a date to see which rooms are free vs booked
- * - Master month calendar: shows who is staying each day + how many rooms remain
+ * Features
+ * - Shared storage via Supabase (no more per‑browser only)
+ * - Edit reservations (change name/room/dates/status/notes)
+ * - Availability inspector: pick a date → see free vs booked + who + date range
+ * - Master month calendar (mobile‑friendly): shows who’s staying and rooms remaining
  * - Password gate (simple shared secret)
  *
- * Tailwind: use the CDN in index.html → <script src="https://cdn.tailwindcss.com"></script>
+ * Tailwind: add to index.html → <script src="https://cdn.tailwindcss.com"></script>
  *********************************/
 
 /*********************************
@@ -43,7 +44,9 @@ function PasswordGate({ children }: PasswordGateProps) {
         <form onSubmit={handle} className="space-y-3">
           <input className="w-full border rounded-xl px-3 py-2" type="password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="Family password" autoFocus />
           <button className="w-full rounded-xl bg-black text-white py-2 font-medium">Enter</button>
-      </form></div></div>
+        </form>
+      </div>
+    </div>
   );
 }
 
@@ -61,7 +64,7 @@ export type Reservation = {
   created_at?: string;
 };
 
-// Five rooms + Blacksmith's Shop (you can rename later)
+// Five rooms + Blacksmith's Shop (rename later)
 const ROOMS = [
   "Queen Next to Bathroom",
   "The One With the Sleeping Porch",
@@ -71,8 +74,8 @@ const ROOMS = [
   "Blacksmith's Shop",
 ];
 
-// -------- LocalStorage fallback (kept as a safety net) --------
-const LS_KEY = "farmhouse_reservations_v2";
+// -------- LocalStorage fallback (safety net) --------
+const LS_KEY = "farmhouse_reservations_v3";
 function useLocalStore() {
   const [rows, setRows] = useState<Reservation[]>([]);
   useEffect(() => {
@@ -86,6 +89,9 @@ function useLocalStore() {
     list: async () => rows,
     add: async (r: Reservation) => setRows((s) => [...s, r]),
     remove: async (id: string) => setRows((s) => s.filter((x) => x.id !== id)),
+    update: async (id: string, patch: Partial<Reservation>) => {
+      setRows((s) => s.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+    },
   } as const;
 }
 
@@ -119,6 +125,10 @@ function useData() {
       const { error } = await client.from("reservations").delete().eq("id", id);
       if (error) throw error;
     },
+    update: async (id: string, patch: Partial<Reservation>) => {
+      const { error } = await client.from("reservations").update(patch).eq("id", id);
+      if (error) throw error;
+    },
   } as const;
 }
 
@@ -139,12 +149,8 @@ function newId() {
     ? (crypto as any).randomUUID()
     : Math.random().toString(36).slice(2);
 }
-function toISO(d: Date) {
-  return d.toISOString().slice(0, 10);
-}
-function addDays(d: Date, n: number) {
-  const x = new Date(d); x.setDate(x.getDate() + n); return x;
-}
+function toISO(d: Date) { return d.toISOString().slice(0, 10); }
+function addDays(d: Date, n: number) { const x = new Date(d); x.setDate(x.getDate() + n); return x; }
 function daysInRange(startISO: string, endISO: string) {
   // produce all ISO dates where start <= d < end
   const out: string[] = [];
@@ -154,19 +160,16 @@ function daysInRange(startISO: string, endISO: string) {
   return out;
 }
 function monthGrid(year: number, monthIdx0: number) {
-  // return array of weeks; each week is array of Date or null
+  // array of weeks; each week: Date | null for out-of-month
   const first = new Date(Date.UTC(year, monthIdx0, 1));
   const last = new Date(Date.UTC(year, monthIdx0 + 1, 0));
   const weeks: (Date | null)[][] = [];
-  let cur = new Date(first);
-  // start from Sunday of the first week
-  const start = new Date(cur); start.setUTCDate(1 - start.getUTCDay());
+  const start = new Date(first); start.setUTCDate(1 - start.getUTCDay());
   let d = start;
   while (d <= last || d.getUTCDay() !== 0) {
     const wk: (Date | null)[] = [];
     for (let i = 0; i < 7; i++) {
-      const inMonth = d.getUTCMonth() === monthIdx0;
-      wk.push(inMonth ? new Date(d) : null);
+      wk.push(d.getUTCMonth() === monthIdx0 ? new Date(d) : null);
       d = addDays(d, 1);
     }
     weeks.push(wk);
@@ -178,23 +181,27 @@ function monthGrid(year: number, monthIdx0: number) {
 /*********************************
  * 🧩 UI Bits
  *********************************/
-type BadgeProps = {
-  children: React.ReactNode;
-  tone?: "stone" | "green" | "amber";
-};
-
-function Badge({ children, tone = "stone" }: BadgeProps) {
+ type BadgeProps = { children: React.ReactNode; tone?: "stone" | "green" | "amber" };
+ function Badge({ children, tone = "stone" }: BadgeProps) {
   const map: Record<string, string> = {
     stone: "bg-stone-100 text-stone-700",
     green: "bg-green-100 text-green-700",
     amber: "bg-amber-100 text-amber-800",
   };
+  return <span className={`px-2 py-1 rounded-full text-xs font-medium ${map[tone]}`}>{children}</span>;
+ }
+
+ function Modal({ open, onClose, children }: { open: boolean; onClose: () => void; children: React.ReactNode }) {
+  if (!open) return null;
   return (
-    <span className={`px-2 py-1 rounded-full text-xs font-medium ${map[tone]}`}>
-      {children}
-    </span>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-6" onClick={onClose}>
+      <div className="bg-white w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-end p-2"><button className="px-2 py-1 text-sm" onClick={onClose}>✕</button></div>
+        <div className="px-4 pb-4">{children}</div>
+      </div>
+    </div>
   );
-}
+ }
 
 function Header() {
   return (
@@ -286,45 +293,114 @@ function ReservationForm({ existing, onAdd }: { existing: Reservation[]; onAdd: 
 }
 
 /*********************************
- * 📋 Room Board (by room)
+ * 📋 Room Board (by room) + Edit
  *********************************/
 function RoomBoard({ rows, onRemove }: { rows: Reservation[]; onRemove: (id: string) => Promise<void> }) {
+  const [editing, setEditing] = useState<Reservation | null>(null);
   const grouped = useMemo(() => {
     const map: Record<string, Reservation[]> = {};
     ROOMS.forEach((r) => (map[r] = []));
-    rows.forEach((r) => { (map[r.room] ||= []).push(r); });
+    rows.forEach((r) => { if (!map[r.room]) map[r.room] = []; map[r.room].push(r); });
     Object.values(map).forEach((arr) => arr.sort((a, b) => a.start_date.localeCompare(b.start_date)));
     return map;
   }, [rows]);
 
   return (
-    <div className="grid md:grid-cols-2 gap-4">
-      {ROOMS.map((room) => (
-        <div key={room} className="bg-white rounded-2xl shadow p-4">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="font-semibold">{room}</h3>
-            <span className="text-xs text-stone-500">{grouped[room]?.length || 0} reservations</span>
+    <>
+      <div className="grid md:grid-cols-2 gap-4">
+        {ROOMS.map((room) => (
+          <div key={room} className="bg-white rounded-2xl shadow p-4">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="font-semibold">{room}</h3>
+              <span className="text-xs text-stone-500">{grouped[room]?.length || 0} reservations</span>
+            </div>
+            <ul className="space-y-2">
+              {(grouped[room] || []).map((r) => (
+                <li key={r.id} className="border rounded-xl px-3 py-2 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-medium truncate">{fmt(r.start_date)} → {fmt(r.end_date)}</div>
+                    <div className="text-sm text-stone-600 truncate">{r.name}{r.notes ? ` — ${r.notes}` : ""}</div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Badge tone={r.status === "definitely" ? "green" : "stone"}>{r.status === "definitely" ? "definite" : "hopeful"}</Badge>
+                    <button onClick={() => setEditing(r)} className="text-xs text-stone-700 hover:underline">edit</button>
+                    <button onClick={() => onRemove(r.id)} className="text-xs text-red-600 hover:underline" title="Delete reservation">delete</button>
+                  </div>
+                </li>
+              ))}
+              {!grouped[room]?.length && (
+                <li className="text-sm text-stone-500">No reservations yet.</li>
+              )}
+            </ul>
           </div>
-          <ul className="space-y-2">
-            {(grouped[room] || []).map((r) => (
-              <li key={r.id} className="border rounded-xl px-3 py-2 flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="font-medium truncate">{fmt(r.start_date)} → {fmt(r.end_date)}</div>
-                  <div className="text-sm text-stone-600 truncate">{r.name}{r.notes ? ` — ${r.notes}` : ""}</div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Badge tone={r.status === "definitely" ? "green" : "stone"}>{r.status === "definitely" ? "definite" : "hopeful"}</Badge>
-                  <button onClick={() => onRemove(r.id)} className="text-xs text-red-600 hover:underline" title="Delete reservation">delete</button>
-                </div>
-              </li>
-            ))}
-            {!grouped[room]?.length && (
-              <li className="text-sm text-stone-500">No reservations yet.</li>
-            )}
-          </ul>
+        ))}
+      </div>
+      <EditDialog editing={editing} onClose={() => setEditing(null)} />
+    </>
+  );
+}
+
+function EditDialog({ editing, onClose }: { editing: Reservation | null; onClose: () => void }) {
+  const data = useData();
+  const [form, setForm] = useState<Reservation | null>(editing);
+  useEffect(() => setForm(editing), [editing]);
+  if (!form) return null;
+
+  const canSubmit = form.name && form.room && form.start_date && form.end_date && new Date(form.end_date) > new Date(form.start_date);
+
+  const save = async () => {
+    if (!canSubmit) return;
+    try {
+      await data.update(form.id, {
+        name: form.name,
+        room: form.room,
+        start_date: form.start_date,
+        end_date: form.end_date,
+        status: form.status,
+        notes: form.notes || "",
+      });
+      onClose();
+      location.reload(); // simple refresh to pull latest
+    } catch (e: any) {
+      alert("Failed to update: " + (e.message || String(e)));
+    }
+  };
+
+  return (
+    <Modal open={!!editing} onClose={onClose}>
+      <h3 className="text-lg font-semibold mb-3">Edit reservation</h3>
+      <div className="grid grid-cols-1 gap-3">
+        <label className="text-xs text-stone-600">Name
+          <input className="w-full border rounded-xl px-3 py-2" value={form.name} onChange={(e) => setForm({ ...(form as Reservation), name: e.target.value })} />
+        </label>
+        <label className="text-xs text-stone-600">Room
+          <select className="w-full border rounded-xl px-3 py-2" value={form.room} onChange={(e) => setForm({ ...(form as Reservation), room: e.target.value })}>
+            {ROOMS.map((r) => <option key={r}>{r}</option>)}
+          </select>
+        </label>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="text-xs text-stone-600">Arrive
+            <input type="date" className="w-full border rounded-xl px-3 py-2" value={form.start_date} onChange={(e) => setForm({ ...(form as Reservation), start_date: e.target.value })} />
+          </label>
+          <label className="text-xs text-stone-600">Depart
+            <input type="date" className="w-full border rounded-xl px-3 py-2" value={form.end_date} onChange={(e) => setForm({ ...(form as Reservation), end_date: e.target.value })} />
+          </label>
         </div>
-      ))}
-    </div>
+        <label className="text-xs text-stone-600">Status
+          <select className="w-full border rounded-xl px-3 py-2" value={form.status} onChange={(e) => setForm({ ...(form as Reservation), status: e.target.value as Reservation["status"] })}>
+            <option value="definitely">Definitely coming</option>
+            <option value="hopefully">Hopefully coming</option>
+          </select>
+        </label>
+        <label className="text-xs text-stone-600">Notes
+          <textarea className="w-full border rounded-xl px-3 py-2" rows={2} value={form.notes || ""} onChange={(e) => setForm({ ...(form as Reservation), notes: e.target.value })} />
+        </label>
+        <div className="flex justify-end gap-2 pt-2">
+          <button onClick={onClose} className="px-3 py-2 rounded-xl border">Cancel</button>
+          <button disabled={!canSubmit} onClick={save} className="px-4 py-2 rounded-xl bg-black text-white disabled:opacity-50">Save changes</button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -382,7 +458,7 @@ function AvailabilityInspector({ rows }: { rows: Reservation[] }) {
 }
 
 /*********************************
- * 🗓️ Master Month Calendar
+ * 🗓️ Master Month Calendar (mobile‑friendly)
  *********************************/
 function MasterCalendar({ rows }: { rows: Reservation[] }) {
   const today = new Date();
@@ -390,64 +466,61 @@ function MasterCalendar({ rows }: { rows: Reservation[] }) {
   const [m, setM] = useState(today.getMonth()); // 0-based
   const grid = useMemo(() => monthGrid(y, m), [y, m]);
 
-  // Map date ISO -> { names: string[], remaining: number }
+  // Per-day occupancy
   const daily = useMemo(() => {
-    const map = new Map<string, { names: string[]; remaining: number }>();
+    const namesPerDay = new Map<string, string[]>();
+    const roomsPerDay = new Map<string, Set<string>>();
     rows.forEach((r) => {
       for (const d of daysInRange(r.start_date, r.end_date)) {
-        const cur = map.get(d) || { names: [], remaining: ROOMS.length };
-        // Add r.name only once per room/night
-        if (!cur.names.includes(r.name)) cur.names.push(r.name);
-        cur.remaining = Math.max(0, ROOMS.length - new Set([...Array.from((map.get(d)?.names || [])), r.name]).size);
-        map.set(d, cur);
-      }
-    });
-    // Fix remaining to be (rooms - roomsBooked) not unique names; we need room occupancy per day
-    // Recompute properly using rooms per day
-    const perDayRooms = new Map<string, Set<string>>();
-    rows.forEach((r) => {
-      for (const d of daysInRange(r.start_date, r.end_date)) {
-        const s = perDayRooms.get(d) || new Set<string>();
+        const n = namesPerDay.get(d) || [];
+        if (!n.includes(r.name)) n.push(r.name);
+        namesPerDay.set(d, n);
+        const s = roomsPerDay.get(d) || new Set<string>();
         s.add(r.room);
-        perDayRooms.set(d, s);
+        roomsPerDay.set(d, s);
       }
     });
-    for (const [d, s] of perDayRooms) {
-      const entry = map.get(d) || { names: [], remaining: ROOMS.length };
-      entry.remaining = Math.max(0, ROOMS.length - s.size);
-      map.set(d, entry);
+    const out = new Map<string, { names: string[]; remaining: number }>();
+    for (const [d, s] of roomsPerDay) {
+      out.set(d, { names: namesPerDay.get(d) || [], remaining: Math.max(0, ROOMS.length - s.size) });
     }
-    return map;
+    return out;
   }, [rows]);
 
   const monthName = new Date(y, m, 1).toLocaleString(undefined, { month: "long", year: "numeric" });
 
   return (
-    <div className="bg-white rounded-2xl shadow p-4 space-y-3">
-      <div className="flex items-center justify-between">
+    <div className="bg-white rounded-2xl shadow p-3 sm:p-4 space-y-3">
+      <div className="flex items-center justify-between gap-2">
         <button className="px-3 py-1 rounded-lg border" onClick={() => { const d = new Date(y, m - 1, 1); setY(d.getFullYear()); setM(d.getMonth()); }}>&larr; Prev</button>
-        <div className="font-semibold">{monthName}</div>
+        <div className="font-semibold text-sm sm:text-base">{monthName}</div>
         <button className="px-3 py-1 rounded-lg border" onClick={() => { const d = new Date(y, m + 1, 1); setY(d.getFullYear()); setM(d.getMonth()); }}>Next &rarr;</button>
       </div>
-      <div className="grid grid-cols-7 gap-2 text-xs text-stone-500">
+      <div className="grid grid-cols-7 gap-1 sm:gap-2 text-[10px] sm:text-xs text-stone-500">
         {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map((d) => <div key={d} className="text-center">{d}</div>)}
       </div>
-      <div className="grid grid-cols-7 gap-2">
+      <div className="grid grid-cols-7 gap-1 sm:gap-2">
         {grid.flat().map((d, i) => (
-          <div key={i} className={`min-h-[88px] border rounded-xl p-2 ${d ? "bg-white" : "bg-stone-100"}`}>
+          <div key={i} className={`min-h-[72px] sm:min-h-[96px] border rounded-lg p-1 sm:p-2 ${d ? "bg-white" : "bg-stone-100"}`}>
             {d && (
               <>
-                <div className="text-xs font-medium text-stone-600">{d.getUTCDate()}</div>
-                <div className="mt-1 space-y-1">
+                <div className="text-[10px] sm:text-xs font-medium text-stone-600">{d.getUTCDate()}</div>
+                <div className="mt-1 space-y-0.5">
                   {(() => {
                     const iso = toISO(d);
                     const entry = daily.get(iso);
                     const names = entry?.names || [];
                     const remaining = entry?.remaining ?? ROOMS.length;
+                    const max = 2; // show up to 2 names on phones
                     return (
-                      <div className="text-[11px] leading-tight text-stone-700">
-                        {names.map((n, idx) => (<div key={idx}>{n}</div>))}
-                        <div className="mt-1 text-stone-500">{remaining} rooms available</div>
+                      <div className="text-[10px] sm:text-[11px] leading-tight text-stone-700">
+                        {names.slice(0, max).map((n, idx) => (
+                          <div key={idx} className="truncate">{n}</div>
+                        ))}
+                        {names.length > max && (
+                          <div className="text-stone-500">+{names.length - max} more</div>
+                        )}
+                        <div className="mt-0.5 sm:mt-1 text-stone-500">{remaining} rooms available</div>
                       </div>
                     );
                   })()}
@@ -496,7 +569,7 @@ export default function App() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-lg font-semibold">Master calendar</h2>
+            <h2 className="text-lg font-semibold">Master calendar <span className="text-sm font-normal text-stone-500">(mobile‑friendly)</span></h2>
             <MasterCalendar rows={rows} />
           </section>
 
@@ -505,7 +578,7 @@ export default function App() {
             {loading ? <div className="text-stone-600">Loading…</div> : error ? <div className="text-red-600">{error}</div> : <RoomBoard rows={rows} onRemove={onRemove} />}
           </section>
 
-          <p className="text-xs text-stone-500">Storage: {SB_URL && SB_KEY ? "Supabase (shared)" : "localStorage (demo)"}. Checkout is on your departure date (end date not booked overnight).</p>
+          <p className="text-xs text-stone-500">Storage: {SB_URL && SB_KEY ? "Supabase (shared)" : "localStorage (demo)"}. Tip: tap a date in "Availability by date" to quickly check rooms. Checkout is on your departure date.</p>
         </div>
       </div>
     </PasswordGate>

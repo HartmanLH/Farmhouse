@@ -907,16 +907,7 @@ export default function App() {
 
         {page === "reservations" ? (
           <>
-            <Section>
-              <section className="space-y-3">
-                <h2 className="text-lg font-semibold">
-                  Master calendar <span className="text-sm font-normal text-stone-500">(tap a date to reserve)</span>
-                </h2>
-                <MasterCalendar rows={rows} onClickDate={openReserveForDate} />
-              </section>
-            </Section>
-
-            <Section>
+          <Section>
               <section className="space-y-3">
                 <h2 className="text-lg font-semibold">Make a reservation</h2>
                 {loading ? (
@@ -928,6 +919,16 @@ export default function App() {
                 )}
               </section>
             </Section>
+            <Section>
+              <section className="space-y-3">
+                <h2 className="text-lg font-semibold">
+                  Master calendar <span className="text-sm font-normal text-stone-500">(tap a date to reserve)</span>
+                </h2>
+                <MasterCalendar rows={rows} onClickDate={openReserveForDate} />
+              </section>
+            </Section>
+
+            
 
             <Section>
               <section className="space-y-3">

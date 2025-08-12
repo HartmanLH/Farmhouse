@@ -379,7 +379,7 @@ function ReservationForm({
             className="w-full border rounded-xl px-3 py-2"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="e.g., Hartman family"
+            placeholder="e.g., Hartman/Ottenberg/Stone/Lachman family"
           />
         </div>
         <div>

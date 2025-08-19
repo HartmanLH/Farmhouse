@@ -3,12 +3,12 @@ import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
 /* ============================================================
    Family Farmhouse — Reservations + Contacts + Message Board
-   Page-wide background images + full-screen pages
+   Responsive, no images, full-width pages, mobile-friendly
    ============================================================ */
 
 /* 🔐 Password Gate */
 const SESSION_KEY = "farmhouse_auth";
-const PASSWORD = "WhiteGate"; // change before deploying
+const PASSWORD = "WhiteGate"; // change as needed
 
 type PasswordGateProps = { children: React.ReactNode };
 function PasswordGate({ children }: PasswordGateProps) {
@@ -111,7 +111,7 @@ function makeClient(): SupabaseClient | null {
 }
 
 /* LocalStorage fallback for reservations */
-const LS_RES_KEY = "farmhouse_reservations_v9";
+const LS_RES_KEY = "farmhouse_reservations_v10";
 function useLocalReservations() {
   const [rows, setRows] = useState<Reservation[]>([]);
   useEffect(() => {
@@ -185,7 +185,7 @@ function useReservations() {
   } as const;
 }
 
-function useContacts() {
+function useContactsStore() {
   const client = makeClient();
   const [rows, setRows] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
@@ -369,40 +369,19 @@ function Modal({
   );
 }
 
-/* Centered lane */
-function Section({ children }: { children: React.ReactNode }) {
-  return <div className="w-full max-w-screen-2xl mx-auto">{children}</div>;
-}
-
-/* Page-wide background wrapper for EACH PAGE (ensures full-screen) */
-function PageBg({ children, image }: { children: React.ReactNode; image: string }) {
-  return (
-    <div className="relative w-full min-h-screen">
-      <div
-        className="pointer-events-none absolute inset-0 bg-cover bg-center"
-        style={{ backgroundImage: `url('${image}')` }}
-      />
-      <div className="pointer-events-none absolute inset-0 bg-black/25" />
-      <div className="relative w-full px-4 sm:px-6 lg:px-8 py-6 space-y-8">
-        {children}
-      </div>
-    </div>
-  );
-}
-
-/* Header + nav */
+/* Header + nav (sticks to full width container) */
 type Page = "reservations" | "contacts" | "board";
 function Header({ page, setPage }: { page: Page; setPage: (p: Page) => void }) {
   return (
     <header className="flex flex-wrap items-center justify-between gap-3">
       <div>
-        <h1 className="text-2xl font-semibold text-white drop-shadow">Family Farmhouse</h1>
-        <p className="text-sm text-white/90">
+        <h1 className="text-2xl font-semibold">Family Farmhouse</h1>
+        <p className="text-sm text-stone-600">
           Reserve rooms, check availability, share contacts, and plan together.
         </p>
       </div>
       <div className="flex items-center gap-2">
-        <nav className="flex rounded-xl overflow-hidden text-sm bg-white/90 backdrop-blur border">
+        <nav className="flex rounded-xl overflow-hidden text-sm bg-white border">
           <button
             onClick={() => setPage("reservations")}
             className={`px-3 py-1 ${page === "reservations" ? "bg-black text-white" : "bg-white"}`}
@@ -427,7 +406,7 @@ function Header({ page, setPage }: { page: Page; setPage: (p: Page) => void }) {
             sessionStorage.removeItem(SESSION_KEY);
             location.reload();
           }}
-          className="text-sm underline text-white/90 hover:text-white"
+          className="text-sm underline text-stone-600 hover:text-stone-900"
         >
           Sign out
         </button>
@@ -513,9 +492,9 @@ function ReservationForm({
     <div className="space-y-3 w-full">
       <form
         onSubmit={handle}
-        className="w-full grid grid-cols-1 md:grid-cols-6 gap-3 items-end bg-white p-4 rounded-2xl shadow"
+        className="w-full grid grid-cols-1 lg:grid-cols-6 gap-3 items-end bg-white p-4 rounded-2xl shadow"
       >
-        <div className="md:col-span-2">
+        <div className="lg:col-span-2">
           <label className="text-xs text-stone-600">Your name</label>
           <input
             className="w-full border rounded-xl px-3 py-2"
@@ -571,7 +550,7 @@ function ReservationForm({
             <option value="hopefully">Hopefully coming</option>
           </select>
         </div>
-        <div className="md:col-span-6">
+        <div className="lg:col-span-6">
           <label className="text-xs text-stone-600">Notes (optional)</label>
           <textarea
             className="w-full border rounded-xl px-3 py-2"
@@ -581,7 +560,7 @@ function ReservationForm({
             placeholder="e.g., bringing toddler"
           />
         </div>
-        <div className="md:col-span-6 flex flex-wrap items-center gap-3">
+        <div className="lg:col-span-6 flex flex-wrap items-center gap-3">
           <button
             disabled={!canSubmit || busy || !room}
             className="rounded-xl bg-black text-white px-4 py-2 disabled:opacity-50"
@@ -634,7 +613,7 @@ function RoomBoard({
   return (
     <>
       <div className="w-full">
-        <div className="grid md:grid-cols-2 gap-4">
+        <div className="grid lg:grid-cols-2 gap-4">
           {ROOMS.map((room) => (
             <div key={room} className="bg-white rounded-2xl shadow p-4">
               <div className="flex items-center justify-between mb-2">
@@ -961,9 +940,9 @@ function MasterCalendar({
   );
 }
 
-/* 📇 Contacts page */
+/* 📇 Contacts page — full width, responsive table */
 function ContactsPage() {
-  const { rows, loading, error, add, remove } = useContacts();
+  const { rows, loading, error, add, remove } = useContactsStore();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -993,12 +972,10 @@ function ContactsPage() {
   return (
     <div className="space-y-6">
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-white drop-shadow">
-          Add your contact info
-        </h2>
+        <h2 className="text-lg font-semibold">Add your contact info</h2>
         <form
           onSubmit={submit}
-          className="grid grid-cols-1 md:grid-cols-4 gap-3 bg-white p-4 rounded-2xl shadow items-end"
+          className="grid grid-cols-1 lg:grid-cols-4 gap-3 bg-white p-4 rounded-2xl shadow items-end"
         >
           <div>
             <label className="text-xs text-stone-600">Name</label>
@@ -1026,7 +1003,7 @@ function ContactsPage() {
               onChange={(e) => setPhone(e.target.value)}
             />
           </div>
-          <div className="md:col-span-4">
+          <div className="lg:col-span-4">
             <label className="text-xs text-stone-600">Notes</label>
             <textarea
               className="w-full border rounded-xl px-3 py-2"
@@ -1036,7 +1013,7 @@ function ContactsPage() {
               placeholder="e.g., best time to reach me"
             />
           </div>
-          <div className="md:col-span-4">
+          <div className="lg:col-span-4">
             <button className="rounded-xl bg-black text-white px-4 py-2">
               Save
             </button>
@@ -1045,15 +1022,13 @@ function ContactsPage() {
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-white drop-shadow">
-          Family contact list
-        </h2>
+        <h2 className="text-lg font-semibold">Family contact list</h2>
         {loading ? (
-          <div className="text-white/90">Loading…</div>
+          <div className="text-stone-700">Loading…</div>
         ) : error ? (
-          <div className="text-red-200">{error}</div>
+          <div className="text-red-600">{error}</div>
         ) : rows.length === 0 ? (
-          <div className="text-white/90">No contacts yet.</div>
+          <div className="text-stone-700">No contacts yet.</div>
         ) : (
           <div className="bg-white rounded-2xl shadow overflow-x-auto">
             <table className="w-full text-sm">
@@ -1110,7 +1085,7 @@ function ContactsPage() {
   );
 }
 
-/* 💬 Message Board */
+/* 💬 Message Board — full width, responsive */
 function BoardPage() {
   const board = useBoard();
   const [active, setActive] = useState<ChannelKey>("plans");
@@ -1177,7 +1152,7 @@ function BoardPage() {
 
   return (
     <div className="space-y-6">
-      <div className="bg-white/90 backdrop-blur rounded-2xl shadow p-2 overflow-x-auto">
+      <div className="bg-white rounded-2xl shadow p-2 overflow-x-auto">
         <div className="flex gap-2">
           {CHANNELS.map((key) => (
             <button
@@ -1195,9 +1170,9 @@ function BoardPage() {
 
       <form
         onSubmit={submit}
-        className="bg-white rounded-2xl shadow p-4 grid grid-cols-1 md:grid-cols-6 gap-3 items-end"
+        className="bg-white rounded-2xl shadow p-4 grid grid-cols-1 lg:grid-cols-6 gap-3 items-end"
       >
-        <div className="md:col-span-2">
+        <div className="lg:col-span-2">
           <label className="text-xs text-stone-600">Your name</label>
           <input
             className="w-full border rounded-xl px-3 py-2"
@@ -1206,7 +1181,7 @@ function BoardPage() {
             placeholder="e.g., Leigh"
           />
         </div>
-        <div className="md:col-span-4">
+        <div className="lg:col-span-4">
           <label className="text-xs text-stone-600">Message</label>
           <input
             className="w-full border rounded-xl px-3 py-2"
@@ -1215,7 +1190,7 @@ function BoardPage() {
             placeholder="Type your message"
           />
         </div>
-        <div className="md:col-span-6">
+        <div className="lg:col-span-6">
           <button className="rounded-xl bg-black text-white px-4 py-2">
             Post
           </button>
@@ -1269,7 +1244,7 @@ function BoardPage() {
   );
 }
 
-/* 🔧 Main App — ALL pages wrapped in PageBg to fill the screen */
+/* 🔧 Main App — full-width layout that adapts to any screen */
 export default function App() {
   const data = useReservations();
   const [rows, setRows] = useState<Reservation[]>([]);
@@ -1325,89 +1300,71 @@ export default function App() {
 
   return (
     <PasswordGate>
-      {page === "reservations" ? (
-        <PageBg image="/images/house-in-winter.jpg">
-          <Section>
-            <Header page={page} setPage={setPage} />
-          </Section>
+      <div className="min-h-screen bg-stone-50 w-full">
+        {/* Full-width container with responsive inner padding */}
+        <div className="w-full px-4 sm:px-6 lg:px-8 py-6 space-y-8">
+          {/* Header is always full width */}
+          <Header page={page} setPage={setPage} />
 
-          {/* 1) Make a reservation */}
-          <Section>
-            <section id="reserve" className="space-y-3">
-              <h2 className="text-lg font-semibold text-white drop-shadow">
-                Make a reservation
-              </h2>
-              {loading ? (
-                <div className="text-white/90">Loading…</div>
-              ) : error ? (
-                <div className="text-red-200">{error}</div>
-              ) : (
-                <ReservationForm existing={rows} onAdd={onAdd} />
-              )}
-            </section>
-          </Section>
+          {page === "reservations" ? (
+            <>
+              {/* 1) Make a reservation */}
+              <section id="reserve" className="space-y-3">
+                <h2 className="text-lg font-semibold">Make a reservation</h2>
+                {loading ? (
+                  <div className="text-stone-700">Loading…</div>
+                ) : error ? (
+                  <div className="text-red-600">{error}</div>
+                ) : (
+                  <ReservationForm existing={rows} onAdd={onAdd} />
+                )}
+              </section>
 
-          {/* 2) Master calendar */}
-          <Section>
-            <section className="space-y-3">
-              <h2 className="text-lg font-semibold text-white drop-shadow">
-                Master calendar{" "}
-                <span className="text-sm font-normal text-white/90">
-                  (tap a date to reserve)
-                </span>
-              </h2>
-              <MasterCalendar rows={rows} onClickDate={openReserveForDate} />
-            </section>
-          </Section>
+              {/* 2) Master calendar (full width, responsive grid inside) */}
+              <section className="space-y-3">
+                <h2 className="text-lg font-semibold">
+                  Master calendar{" "}
+                  <span className="text-sm font-normal text-stone-500">
+                    (tap a date to reserve)
+                  </span>
+                </h2>
+                <MasterCalendar rows={rows} onClickDate={openReserveForDate} />
+              </section>
 
-          {/* 3) Reservations by room */}
-          <Section>
-            <section className="space-y-3">
-              <h2 className="text-lg font-semibold text-white drop-shadow">
-                Reservations by room
-              </h2>
-              {loading ? (
-                <div className="text-white/90">Loading…</div>
-              ) : error ? (
-                <div className="text-red-200">{error}</div>
-              ) : (
-                <RoomBoard rows={rows} onRemove={onRemove} onEdited={refresh} />
-              )}
-            </section>
-          </Section>
+              {/* 3) Reservations by room */}
+              <section className="space-y-3">
+                <h2 className="text-lg font-semibold">Reservations by room</h2>
+                {loading ? (
+                  <div className="text-stone-700">Loading…</div>
+                ) : error ? (
+                  <div className="text-red-600">{error}</div>
+                ) : (
+                  <RoomBoard rows={rows} onRemove={onRemove} onEdited={refresh} />
+                )}
+              </section>
 
-          <Modal open={reserveOpen} onClose={() => setReserveOpen(false)}>
-            <h3 className="text-lg font-semibold mb-3">Reserve these dates</h3>
-            <ReservationForm
-              existing={rows}
-              onAdd={async (r) => {
-                await onAdd(r);
-                setReserveOpen(false);
-              }}
-              defaultStart={presetStart}
-              defaultEnd={presetEnd}
-            />
-          </Modal>
-        </PageBg>
-      ) : page === "contacts" ? (
-        <PageBg image="/images/frog-forest-theater.png">
-          <Section>
-            <Header page={page} setPage={setPage} />
-          </Section>
-          <Section>
+              <Modal open={reserveOpen} onClose={() => setReserveOpen(false)}>
+                <h3 className="text-lg font-semibold mb-3">Reserve these dates</h3>
+                <ReservationForm
+                  existing={rows}
+                  onAdd={async (r) => {
+                    await onAdd(r);
+                    setReserveOpen(false);
+                  }}
+                  defaultStart={presetStart}
+                  defaultEnd={presetEnd}
+                />
+              </Modal>
+            </>
+          ) : page === "contacts" ? (
+            // Full-width, stretches to screen, with readable cards/table
             <ContactsPage />
-          </Section>
-        </PageBg>
-      ) : (
-        <PageBg image="/images/blacksmiths-shop.png">
-          <Section>
-            <Header page={page} setPage={setPage} />
-          </Section>
-          <Section>
+          ) : (
+            // Message board — full-width and responsive
             <BoardPage />
-          </Section>
-        </PageBg>
-      )}
+          )}
+        </div>
+      </div>
     </PasswordGate>
   );
 }

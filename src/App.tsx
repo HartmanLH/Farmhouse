@@ -3,12 +3,12 @@ import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
 /* ============================================================
    Family Farmhouse — Reservations + Contacts + Message Board
-   Page-specific full backgrounds + centered content lane
+   Page-wide background images + full-screen pages
    ============================================================ */
 
 /* 🔐 Password Gate */
 const SESSION_KEY = "farmhouse_auth";
-const PASSWORD = "WhiteGate"; // change as needed
+const PASSWORD = "WhiteGate"; // change before deploying
 
 type PasswordGateProps = { children: React.ReactNode };
 function PasswordGate({ children }: PasswordGateProps) {
@@ -32,7 +32,9 @@ function PasswordGate({ children }: PasswordGateProps) {
     <div className="min-h-screen flex items-center justify-center bg-stone-50 p-6">
       <div className="max-w-md w-full bg-white shadow-xl rounded-2xl p-6 space-y-4">
         <h1 className="text-2xl font-semibold">Family Farmhouse</h1>
-        <p className="text-sm text-stone-600">Enter the family password to view and make reservations.</p>
+        <p className="text-sm text-stone-600">
+          Enter the family password to view and make reservations.
+        </p>
         <form onSubmit={handle} className="space-y-3">
           <input
             className="w-full border rounded-xl px-3 py-2"
@@ -42,7 +44,9 @@ function PasswordGate({ children }: PasswordGateProps) {
             placeholder="Family password"
             autoFocus
           />
-          <button className="w-full rounded-xl bg-black text-white py-2 font-medium">Enter</button>
+          <button className="w-full rounded-xl bg-black text-white py-2 font-medium">
+            Enter
+          </button>
         </form>
       </div>
     </div>
@@ -70,6 +74,8 @@ export type Contact = {
   created_at?: string;
 };
 
+const CHANNELS = ["plans", "projects", "misc"] as const;
+type ChannelKey = typeof CHANNELS[number];
 export type Post = {
   id: string;
   channel: ChannelKey;
@@ -79,7 +85,13 @@ export type Post = {
   created_at?: string;
 };
 
-/* Rooms (rename later) */
+const CHANNEL_LABEL: Record<ChannelKey, string> = {
+  plans: "Plans",
+  projects: "Proposed Projects",
+  misc: "Miscellaneous",
+};
+
+/* Rooms (placeholder names) */
 const ROOMS = [
   "Queen Next to Bathroom",
   "The One With the Sleeping Porch",
@@ -89,16 +101,7 @@ const ROOMS = [
   "Blacksmith's Shop",
 ];
 
-/* Message Board channels */
-const CHANNELS = ["plans", "projects", "misc"] as const;
-type ChannelKey = typeof CHANNELS[number];
-const CHANNEL_LABEL: Record<ChannelKey, string> = {
-  plans: "Plans",
-  projects: "Proposed Projects",
-  misc: "Miscellaneous",
-};
-
-/* 🔌 Supabase client + fallback (reads keys from window globals you added in index.html) */
+/* 🔌 Supabase client (reads keys from window globals you added in index.html) */
 const SB_URL = (window as any).SUPABASE_URL as string | undefined;
 const SB_KEY = (window as any).SUPABASE_ANON_KEY as string | undefined;
 
@@ -108,7 +111,7 @@ function makeClient(): SupabaseClient | null {
 }
 
 /* LocalStorage fallback for reservations */
-const LS_RES_KEY = "farmhouse_reservations_v8";
+const LS_RES_KEY = "farmhouse_reservations_v9";
 function useLocalReservations() {
   const [rows, setRows] = useState<Reservation[]>([]);
   useEffect(() => {
@@ -127,14 +130,40 @@ function useLocalReservations() {
   } as const;
 }
 
-/* Data layer for reservations (Supabase or fallback) */
-function useData() {
+/* LocalStorage fallback for posts */
+const LS_POSTS_KEY = "farmhouse_posts_v1";
+function useLocalPosts() {
+  const [rows, setRows] = useState<Post[]>([]);
+  useEffect(() => {
+    const raw = localStorage.getItem(LS_POSTS_KEY);
+    if (raw) setRows(JSON.parse(raw));
+  }, []);
+  useEffect(() => {
+    localStorage.setItem(LS_POSTS_KEY, JSON.stringify(rows));
+  }, [rows]);
+  return {
+    list: async (channel?: ChannelKey) =>
+      channel ? rows.filter((p) => p.channel === channel) : rows,
+    add: async (p: Post) => setRows((s) => [p, ...s]),
+    remove: async (id: string) => setRows((s) => s.filter((x) => x.id !== id)),
+    togglePin: async (id: string) =>
+      setRows((s) =>
+        s.map((p) => (p.id === id ? { ...p, pinned: !p.pinned } : p))
+      ),
+  } as const;
+}
+
+/* Data layer (Supabase or fallback) */
+function useReservations() {
   const ls = useLocalReservations();
   const client = makeClient();
   if (!client) return ls;
   return {
     list: async (): Promise<Reservation[]> => {
-      const { data, error } = await client.from("reservations").select("*").order("start_date", { ascending: true });
+      const { data, error } = await client
+        .from("reservations")
+        .select("*")
+        .order("start_date", { ascending: true });
       if (error) throw error;
       return data as Reservation[];
     },
@@ -147,13 +176,15 @@ function useData() {
       if (error) throw error;
     },
     update: async (id: string, patch: Partial<Reservation>) => {
-      const { error } = await client.from("reservations").update(patch).eq("id", id);
+      const { error } = await client
+        .from("reservations")
+        .update(patch)
+        .eq("id", id);
       if (error) throw error;
     },
   } as const;
 }
 
-/* Contacts store (Supabase only; simple) */
 function useContacts() {
   const client = makeClient();
   const [rows, setRows] = useState<Contact[]>([]);
@@ -165,7 +196,10 @@ function useContacts() {
     setError(null);
     try {
       if (!client) throw new Error("Supabase not configured");
-      const { data, error } = await client.from("contacts").select("*").order("created_at", { ascending: false });
+      const { data, error } = await client
+        .from("contacts")
+        .select("*")
+        .order("created_at", { ascending: false });
       if (error) throw error;
       setRows(data as Contact[]);
     } catch (e: any) {
@@ -196,31 +230,17 @@ function useContacts() {
   return { rows, loading, error, add, remove } as const;
 }
 
-/* Message board store (Supabase or local fallback) */
-const LS_POSTS_KEY = "farmhouse_posts_v1";
-function useLocalPosts() {
-  const [rows, setRows] = useState<Post[]>([]);
-  useEffect(() => {
-    const raw = localStorage.getItem(LS_POSTS_KEY);
-    if (raw) setRows(JSON.parse(raw));
-  }, []);
-  useEffect(() => {
-    localStorage.setItem(LS_POSTS_KEY, JSON.stringify(rows));
-  }, [rows]);
-  return {
-    list: async (channel?: ChannelKey) => (channel ? rows.filter((p) => p.channel === channel) : rows),
-    add: async (p: Post) => setRows((s) => [p, ...s]),
-    remove: async (id: string) => setRows((s) => s.filter((x) => x.id !== id)),
-    togglePin: async (id: string) => setRows((s) => s.map((p) => (p.id === id ? { ...p, pinned: !p.pinned } : p))),
-  } as const;
-}
 function useBoard() {
   const client = makeClient();
   const ls = useLocalPosts();
   if (!client) return ls;
   return {
     list: async (channel?: ChannelKey) => {
-      let q = client.from("posts").select("*").order("pinned", { ascending: false }).order("created_at", { ascending: false });
+      let q = client
+        .from("posts")
+        .select("*")
+        .order("pinned", { ascending: false })
+        .order("created_at", { ascending: false });
       if (channel) q = q.eq("channel", channel);
       const { data, error } = await q;
       if (error) throw error;
@@ -244,9 +264,18 @@ function useBoard() {
 /* 📅 Date helpers */
 function fmt(dateStr: string) {
   const d = new Date(dateStr + "T00:00:00");
-  return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  return d.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
 }
-function dateRangesOverlap(aStart: string, aEnd: string, bStart: string, bEnd: string) {
+function dateRangesOverlap(
+  aStart: string,
+  aEnd: string,
+  bStart: string,
+  bEnd: string
+) {
   const A1 = new Date(aStart),
     A2 = new Date(aEnd);
   const B1 = new Date(bStart),
@@ -303,14 +332,32 @@ function Badge({ children, tone = "stone" }: BadgeProps) {
     green: "bg-green-100 text-green-700",
     amber: "bg-amber-100 text-amber-800",
   };
-  return <span className={`px-2 py-1 rounded-full text-xs font-medium ${map[tone]}`}>{children}</span>;
+  return (
+    <span className={`px-2 py-1 rounded-full text-xs font-medium ${map[tone]}`}>
+      {children}
+    </span>
+  );
 }
 
-function Modal({ open, onClose, children }: { open: boolean; onClose: () => void; children: React.ReactNode }) {
+function Modal({
+  open,
+  onClose,
+  children,
+}: {
+  open: boolean;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-6" onClick={onClose}>
-      <div className="bg-white w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl shadow-xl" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-6"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex justify-end p-2">
           <button className="px-2 py-1 text-sm" onClick={onClose}>
             ✕
@@ -322,30 +369,37 @@ function Modal({ open, onClose, children }: { open: boolean; onClose: () => void
   );
 }
 
-/* Centering helper: a centered lane with equal margins */
+/* Centered lane */
 function Section({ children }: { children: React.ReactNode }) {
   return <div className="w-full max-w-screen-2xl mx-auto">{children}</div>;
 }
 
-/* Page background wrapper (per-page image) */
+/* Page-wide background wrapper for EACH PAGE (ensures full-screen) */
 function PageBg({ children, image }: { children: React.ReactNode; image: string }) {
   return (
     <div className="relative w-full min-h-screen">
-      <div className="pointer-events-none absolute inset-0 bg-cover bg-center" style={{ backgroundImage: `url('${image}')` }} />
-      <div className="pointer-events-none absolute inset-0 bg-black/20" />
-      <div className="relative w-full px-4 sm:px-6 lg:px-8 py-6 space-y-8">{children}</div>
+      <div
+        className="pointer-events-none absolute inset-0 bg-cover bg-center"
+        style={{ backgroundImage: `url('${image}')` }}
+      />
+      <div className="pointer-events-none absolute inset-0 bg-black/25" />
+      <div className="relative w-full px-4 sm:px-6 lg:px-8 py-6 space-y-8">
+        {children}
+      </div>
     </div>
   );
 }
 
-/* Header + pages */
+/* Header + nav */
 type Page = "reservations" | "contacts" | "board";
 function Header({ page, setPage }: { page: Page; setPage: (p: Page) => void }) {
   return (
     <header className="flex flex-wrap items-center justify-between gap-3">
       <div>
         <h1 className="text-2xl font-semibold text-white drop-shadow">Family Farmhouse</h1>
-        <p className="text-sm text-white/90">Reserve rooms, check availability, share contacts, and plan together.</p>
+        <p className="text-sm text-white/90">
+          Reserve rooms, check availability, share contacts, and plan together.
+        </p>
       </div>
       <div className="flex items-center gap-2">
         <nav className="flex rounded-xl overflow-hidden text-sm bg-white/90 backdrop-blur border">
@@ -355,10 +409,16 @@ function Header({ page, setPage }: { page: Page; setPage: (p: Page) => void }) {
           >
             Reservations
           </button>
-          <button onClick={() => setPage("contacts")} className={`px-3 py-1 ${page === "contacts" ? "bg-black text-white" : "bg-white"}`}>
+          <button
+            onClick={() => setPage("contacts")}
+            className={`px-3 py-1 ${page === "contacts" ? "bg-black text-white" : "bg-white"}`}
+          >
             Contacts
           </button>
-          <button onClick={() => setPage("board")} className={`px-3 py-1 ${page === "board" ? "bg-black text-white" : "bg-white"}`}>
+          <button
+            onClick={() => setPage("board")}
+            className={`px-3 py-1 ${page === "board" ? "bg-black text-white" : "bg-white"}`}
+          >
             Message Board
           </button>
         </nav>
@@ -376,7 +436,7 @@ function Header({ page, setPage }: { page: Page; setPage: (p: Page) => void }) {
   );
 }
 
-/* 📝 Reservation Form (filters rooms to availability) */
+/* 📝 Reservation Form */
 function ReservationForm({
   existing,
   onAdd,
@@ -396,12 +456,24 @@ function ReservationForm({
   const [busy, setBusy] = useState(false);
 
   const availability = useMemo(() => {
-    if (!start || !end) return { free: ROOMS.slice(), booked: [] as { room: string; by: string; range: string }[] };
+    if (!start || !end)
+      return {
+        free: ROOMS.slice(),
+        booked: [] as { room: string; by: string; range: string }[],
+      };
     const booked: { room: string; by: string; range: string }[] = [];
     const free: string[] = [];
     ROOMS.forEach((room) => {
-      const r = existing.find((x) => x.room === room && dateRangesOverlap(start, end, x.start_date, x.end_date));
-      if (r) booked.push({ room, by: r.name, range: `${fmt(r.start_date)} → ${fmt(r.end_date)}` });
+      const r = existing.find(
+        (x) =>
+          x.room === room && dateRangesOverlap(start, end, x.start_date, x.end_date)
+      );
+      if (r)
+        booked.push({
+          room,
+          by: r.name,
+          range: `${fmt(r.start_date)} → ${fmt(r.end_date)}`,
+        });
       else free.push(room);
     });
     return { free, booked };
@@ -409,10 +481,13 @@ function ReservationForm({
 
   const [room, setRoom] = useState<string>("");
   useEffect(() => {
-    setRoom((prev) => (prev && availability.free.includes(prev) ? prev : availability.free[0] || ""));
+    setRoom((prev) =>
+      prev && availability.free.includes(prev) ? prev : availability.free[0] || ""
+    );
   }, [availability.free]);
 
-  const canSubmit = name && room && start && end && new Date(end) > new Date(start);
+  const canSubmit =
+    name && room && start && end && new Date(end) > new Date(start);
 
   const handle = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -436,22 +511,44 @@ function ReservationForm({
 
   return (
     <div className="space-y-3 w-full">
-      <form onSubmit={handle} className="w-full grid grid-cols-1 md:grid-cols-6 gap-3 items-end bg-white p-4 rounded-2xl shadow">
+      <form
+        onSubmit={handle}
+        className="w-full grid grid-cols-1 md:grid-cols-6 gap-3 items-end bg-white p-4 rounded-2xl shadow"
+      >
         <div className="md:col-span-2">
           <label className="text-xs text-stone-600">Your name</label>
-          <input className="w-full border rounded-xl px-3 py-2" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g., Hartman family" />
+          <input
+            className="w-full border rounded-xl px-3 py-2"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g., Hartman family"
+          />
         </div>
         <div>
           <label className="text-xs text-stone-600">Arrive</label>
-          <input className="w-full border rounded-xl px-3 py-2" type="date" value={start} onChange={(e) => setStart(e.target.value)} />
+          <input
+            className="w-full border rounded-xl px-3 py-2"
+            type="date"
+            value={start}
+            onChange={(e) => setStart(e.target.value)}
+          />
         </div>
         <div>
           <label className="text-xs text-stone-600">Depart</label>
-          <input className="w-full border rounded-xl px-3 py-2" type="date" value={end} onChange={(e) => setEnd(e.target.value)} />
+          <input
+            className="w-full border rounded-xl px-3 py-2"
+            type="date"
+            value={end}
+            onChange={(e) => setEnd(e.target.value)}
+          />
         </div>
         <div>
           <label className="text-xs text-stone-600">Room</label>
-          <select className="w-full border rounded-xl px-3 py-2" value={room} onChange={(e) => setRoom(e.target.value)}>
+          <select
+            className="w-full border rounded-xl px-3 py-2"
+            value={room}
+            onChange={(e) => setRoom(e.target.value)}
+          >
             {availability.free.length ? (
               availability.free.map((r) => <option key={r}>{r}</option>)
             ) : (
@@ -463,17 +560,32 @@ function ReservationForm({
         </div>
         <div>
           <label className="text-xs text-stone-600">Status</label>
-          <select className="w-full border rounded-xl px-3 py-2" value={status} onChange={(e) => setStatus(e.target.value as Reservation["status"])}>
+          <select
+            className="w-full border rounded-xl px-3 py-2"
+            value={status}
+            onChange={(e) =>
+              setStatus(e.target.value as Reservation["status"])
+            }
+          >
             <option value="definitely">Definitely coming</option>
             <option value="hopefully">Hopefully coming</option>
           </select>
         </div>
         <div className="md:col-span-6">
           <label className="text-xs text-stone-600">Notes (optional)</label>
-          <textarea className="w-full border rounded-xl px-3 py-2" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="e.g., bringing toddler" />
+          <textarea
+            className="w-full border rounded-xl px-3 py-2"
+            rows={2}
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="e.g., bringing toddler"
+          />
         </div>
         <div className="md:col-span-6 flex flex-wrap items-center gap-3">
-          <button disabled={!canSubmit || busy || !room} className="rounded-xl bg-black text-white px-4 py-2 disabled:opacity-50">
+          <button
+            disabled={!canSubmit || busy || !room}
+            className="rounded-xl bg-black text-white px-4 py-2 disabled:opacity-50"
+          >
             Reserve
           </button>
           {!start || !end ? null : availability.booked.length ? (
@@ -513,7 +625,9 @@ function RoomBoard({
       if (!map[r.room]) map[r.room] = [];
       map[r.room].push(r);
     });
-    Object.values(map).forEach((arr) => arr.sort((a, b) => a.start_date.localeCompare(b.start_date)));
+    Object.values(map).forEach((arr) =>
+      arr.sort((a, b) => a.start_date.localeCompare(b.start_date))
+    );
     return map;
   }, [rows]);
 
@@ -525,11 +639,16 @@ function RoomBoard({
             <div key={room} className="bg-white rounded-2xl shadow p-4">
               <div className="flex items-center justify-between mb-2">
                 <h3 className="font-semibold">{room}</h3>
-                <span className="text-xs text-stone-500">{grouped[room]?.length || 0} reservations</span>
+                <span className="text-xs text-stone-500">
+                  {grouped[room]?.length || 0} reservations
+                </span>
               </div>
               <ul className="space-y-2">
                 {(grouped[room] || []).map((r) => (
-                  <li key={r.id} className="border rounded-xl px-3 py-2 flex items-center justify-between gap-3">
+                  <li
+                    key={r.id}
+                    className="border rounded-xl px-3 py-2 flex items-center justify-between gap-3"
+                  >
                     <div className="min-w-0">
                       <div className="font-medium truncate">
                         {fmt(r.start_date)} → {fmt(r.end_date)}
@@ -540,23 +659,38 @@ function RoomBoard({
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
-                      <Badge tone={r.status === "definitely" ? "green" : "stone"}>{r.status === "definitely" ? "definite" : "hopeful"}</Badge>
-                      <button onClick={() => setEditing(r)} className="text-xs text-stone-700 hover:underline">
+                      <Badge tone={r.status === "definitely" ? "green" : "stone"}>
+                        {r.status === "definitely" ? "definite" : "hopeful"}
+                      </Badge>
+                      <button
+                        onClick={() => setEditing(r)}
+                        className="text-xs text-stone-700 hover:underline"
+                      >
                         edit
                       </button>
-                      <button onClick={() => onRemove(r.id)} className="text-xs text-red-600 hover:underline" title="Delete reservation">
+                      <button
+                        onClick={() => onRemove(r.id)}
+                        className="text-xs text-red-600 hover:underline"
+                        title="Delete reservation"
+                      >
                         delete
                       </button>
                     </div>
                   </li>
                 ))}
-                {!grouped[room]?.length && <li className="text-sm text-stone-500">No reservations yet.</li>}
+                {!grouped[room]?.length && (
+                  <li className="text-sm text-stone-500">No reservations yet.</li>
+                )}
               </ul>
             </div>
           ))}
         </div>
       </div>
-      <EditDialog editing={editing} onClose={() => setEditing(null)} onEdited={onEdited} />
+      <EditDialog
+        editing={editing}
+        onClose={() => setEditing(null)}
+        onEdited={onEdited}
+      />
     </>
   );
 }
@@ -570,13 +704,17 @@ function EditDialog({
   onClose: () => void;
   onEdited: () => void;
 }) {
-  const data = useData();
+  const data = useReservations();
   const [form, setForm] = useState<Reservation | null>(editing);
   useEffect(() => setForm(editing), [editing]);
   if (!form) return null;
 
   const canSubmit =
-    form.name && form.room && form.start_date && form.end_date && new Date(form.end_date) > new Date(form.start_date);
+    form.name &&
+    form.room &&
+    form.start_date &&
+    form.end_date &&
+    new Date(form.end_date) > new Date(form.start_date);
 
   const save = async () => {
     if (!canSubmit) return;
@@ -602,11 +740,23 @@ function EditDialog({
       <div className="grid grid-cols-1 gap-3">
         <label className="text-xs text-stone-600">
           Name
-          <input className="w-full border rounded-xl px-3 py-2" value={form.name} onChange={(e) => setForm({ ...(form as Reservation), name: e.target.value })} />
+          <input
+            className="w-full border rounded-xl px-3 py-2"
+            value={form.name}
+            onChange={(e) =>
+              setForm({ ...(form as Reservation), name: e.target.value })
+            }
+          />
         </label>
         <label className="text-xs text-stone-600">
           Room
-          <select className="w-full border rounded-xl px-3 py-2" value={form.room} onChange={(e) => setForm({ ...(form as Reservation), room: e.target.value })}>
+          <select
+            className="w-full border rounded-xl px-3 py-2"
+            value={form.room}
+            onChange={(e) =>
+              setForm({ ...(form as Reservation), room: e.target.value })
+            }
+          >
             {ROOMS.map((r) => (
               <option key={r}>{r}</option>
             ))}
@@ -619,7 +769,9 @@ function EditDialog({
               type="date"
               className="w-full border rounded-xl px-3 py-2"
               value={form.start_date}
-              onChange={(e) => setForm({ ...(form as Reservation), start_date: e.target.value })}
+              onChange={(e) =>
+                setForm({ ...(form as Reservation), start_date: e.target.value })
+              }
             />
           </label>
           <label className="text-xs text-stone-600">
@@ -628,7 +780,9 @@ function EditDialog({
               type="date"
               className="w-full border rounded-xl px-3 py-2"
               value={form.end_date}
-              onChange={(e) => setForm({ ...(form as Reservation), end_date: e.target.value })}
+              onChange={(e) =>
+                setForm({ ...(form as Reservation), end_date: e.target.value })
+              }
             />
           </label>
         </div>
@@ -637,7 +791,12 @@ function EditDialog({
           <select
             className="w-full border rounded-xl px-3 py-2"
             value={form.status}
-            onChange={(e) => setForm({ ...(form as Reservation), status: e.target.value as Reservation["status"] })}
+            onChange={(e) =>
+              setForm({
+                ...(form as Reservation),
+                status: e.target.value as Reservation["status"],
+              })
+            }
           >
             <option value="definitely">Definitely coming</option>
             <option value="hopefully">Hopefully coming</option>
@@ -649,14 +808,20 @@ function EditDialog({
             className="w-full border rounded-xl px-3 py-2"
             rows={2}
             value={form.notes || ""}
-            onChange={(e) => setForm({ ...(form as Reservation), notes: e.target.value })}
+            onChange={(e) =>
+              setForm({ ...(form as Reservation), notes: e.target.value })
+            }
           />
         </label>
         <div className="flex justify-end gap-2 pt-2">
           <button onClick={onClose} className="px-3 py-2 rounded-xl border">
             Cancel
           </button>
-          <button disabled={!canSubmit} onClick={save} className="px-4 py-2 rounded-xl bg-black text-white disabled:opacity-50">
+          <button
+            disabled={!canSubmit}
+            onClick={save}
+            className="px-4 py-2 rounded-xl bg-black text-white disabled:opacity-50"
+          >
             Save changes
           </button>
         </div>
@@ -693,12 +858,18 @@ function MasterCalendar({
     });
     const out = new Map<string, { names: string[]; remaining: number }>();
     for (const [d, s] of roomsPerDay) {
-      out.set(d, { names: namesPerDay.get(d) || [], remaining: Math.max(0, ROOMS.length - s.size) });
+      out.set(d, {
+        names: namesPerDay.get(d) || [],
+        remaining: Math.max(0, ROOMS.length - s.size),
+      });
     }
     return out;
   }, [rows]);
 
-  const monthName = new Date(y, m, 1).toLocaleString(undefined, { month: "long", year: "numeric" });
+  const monthName = new Date(y, m, 1).toLocaleString(undefined, {
+    month: "long",
+    year: "numeric",
+  });
 
   const handleCellClick = (d: Date | null) => {
     if (!d) return;
@@ -743,14 +914,18 @@ function MasterCalendar({
         {grid.flat().map((d, i) => (
           <button
             key={i}
-            className={`min-h-[72px] sm:min-h-[96px] border rounded-lg p-1 sm:p-2 text-left ${d ? "bg-white hover:bg-stone-50" : "bg-stone-100"}`}
+            className={`min-h-[72px] sm:min-h-[96px] border rounded-lg p-1 sm:p-2 text-left ${
+              d ? "bg-white hover:bg-stone-50" : "bg-stone-100"
+            }`}
             onClick={() => handleCellClick(d)}
             disabled={!d}
             aria-label={d ? `Select ${toISO(d)}` : "Empty"}
           >
             {d && (
               <>
-                <div className="text-[10px] sm:text-xs font-medium text-stone-600">{d.getUTCDate()}</div>
+                <div className="text-[10px] sm:text-xs font-medium text-stone-600">
+                  {d.getUTCDate()}
+                </div>
                 <div className="mt-1 space-y-0.5">
                   {(() => {
                     const iso = toISO(d);
@@ -765,8 +940,14 @@ function MasterCalendar({
                             {n}
                           </div>
                         ))}
-                        {names.length > max && <div className="text-stone-500">+{names.length - max} more</div>}
-                        <div className="mt-0.5 sm:mt-1 text-stone-500">{remaining} rooms available</div>
+                        {names.length > max && (
+                          <div className="text-stone-500">
+                            +{names.length - max} more
+                          </div>
+                        )}
+                        <div className="mt-0.5 sm:mt-1 text-stone-500">
+                          {remaining} rooms available
+                        </div>
                       </div>
                     );
                   })()}
@@ -792,7 +973,14 @@ function ContactsPage() {
     e.preventDefault();
     if (!name) return;
     try {
-      await add({ id: newId(), name, email, phone, notes, created_at: new Date().toISOString() });
+      await add({
+        id: newId(),
+        name,
+        email,
+        phone,
+        notes,
+        created_at: new Date().toISOString(),
+      });
       setName("");
       setEmail("");
       setPhone("");
@@ -805,32 +993,61 @@ function ContactsPage() {
   return (
     <div className="space-y-6">
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-white drop-shadow">Add your contact info</h2>
-        <form onSubmit={submit} className="grid grid-cols-1 md:grid-cols-4 gap-3 bg-white p-4 rounded-2xl shadow items-end">
+        <h2 className="text-lg font-semibold text-white drop-shadow">
+          Add your contact info
+        </h2>
+        <form
+          onSubmit={submit}
+          className="grid grid-cols-1 md:grid-cols-4 gap-3 bg-white p-4 rounded-2xl shadow items-end"
+        >
           <div>
             <label className="text-xs text-stone-600">Name</label>
-            <input className="w-full border rounded-xl px-3 py-2" value={name} onChange={(e) => setName(e.target.value)} required />
+            <input
+              className="w-full border rounded-xl px-3 py-2"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+            />
           </div>
           <div>
             <label className="text-xs text-stone-600">Email</label>
-            <input className="w-full border rounded-xl px-3 py-2" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+            <input
+              className="w-full border rounded-xl px-3 py-2"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
           </div>
           <div>
             <label className="text-xs text-stone-600">Phone</label>
-            <input className="w-full border rounded-xl px-3 py-2" value={phone} onChange={(e) => setPhone(e.target.value)} />
+            <input
+              className="w-full border rounded-xl px-3 py-2"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+            />
           </div>
           <div className="md:col-span-4">
             <label className="text-xs text-stone-600">Notes</label>
-            <textarea className="w-full border rounded-xl px-3 py-2" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="e.g., best time to reach me" />
+            <textarea
+              className="w-full border rounded-xl px-3 py-2"
+              rows={2}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="e.g., best time to reach me"
+            />
           </div>
           <div className="md:col-span-4">
-            <button className="rounded-xl bg-black text-white px-4 py-2">Save</button>
+            <button className="rounded-xl bg-black text-white px-4 py-2">
+              Save
+            </button>
           </div>
         </form>
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-white drop-shadow">Family contact list</h2>
+        <h2 className="text-lg font-semibold text-white drop-shadow">
+          Family contact list
+        </h2>
         {loading ? (
           <div className="text-white/90">Loading…</div>
         ) : error ? (
@@ -853,11 +1070,32 @@ function ContactsPage() {
                 {rows.map((c) => (
                   <tr key={c.id} className="border-t">
                     <td className="p-3 align-top">{c.name}</td>
-                    <td className="p-3 align-top">{c.email ? <a className="underline" href={`mailto:${c.email}`}>{c.email}</a> : ""}</td>
-                    <td className="p-3 align-top">{c.phone ? <a className="underline" href={`tel:${c.phone}`}>{c.phone}</a> : ""}</td>
-                    <td className="p-3 align-top whitespace-pre-wrap">{c.notes}</td>
+                    <td className="p-3 align-top">
+                      {c.email ? (
+                        <a className="underline" href={`mailto:${c.email}`}>
+                          {c.email}
+                        </a>
+                      ) : (
+                        ""
+                      )}
+                    </td>
+                    <td className="p-3 align-top">
+                      {c.phone ? (
+                        <a className="underline" href={`tel:${c.phone}`}>
+                          {c.phone}
+                        </a>
+                      ) : (
+                        ""
+                      )}
+                    </td>
+                    <td className="p-3 align-top whitespace-pre-wrap">
+                      {c.notes}
+                    </td>
                     <td className="p-3 align-top text-right">
-                      <button onClick={() => remove(c.id)} className="text-red-600 text-xs underline">
+                      <button
+                        onClick={() => remove(c.id)}
+                        className="text-red-600 text-xs underline"
+                      >
                         delete
                       </button>
                     </td>
@@ -904,7 +1142,14 @@ function BoardPage() {
     e.preventDefault();
     if (!author || !body) return;
     try {
-      await board.add({ id: newId(), channel: active, author, body, pinned: false, created_at: new Date().toISOString() });
+      await board.add({
+        id: newId(),
+        channel: active,
+        author,
+        body,
+        pinned: false,
+        created_at: new Date().toISOString(),
+      });
       setBody("");
       await refresh(active);
     } catch (e: any) {
@@ -937,7 +1182,9 @@ function BoardPage() {
           {CHANNELS.map((key) => (
             <button
               key={key}
-              className={`px-3 py-1 rounded-lg border ${active === key ? "bg-black text-white" : "bg-white"}`}
+              className={`px-3 py-1 rounded-lg border ${
+                active === key ? "bg-black text-white" : "bg-white"
+              }`}
               onClick={() => setActive(key)}
             >
               {CHANNEL_LABEL[key]}
@@ -946,17 +1193,32 @@ function BoardPage() {
         </div>
       </div>
 
-      <form onSubmit={submit} className="bg-white rounded-2xl shadow p-4 grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
+      <form
+        onSubmit={submit}
+        className="bg-white rounded-2xl shadow p-4 grid grid-cols-1 md:grid-cols-6 gap-3 items-end"
+      >
         <div className="md:col-span-2">
           <label className="text-xs text-stone-600">Your name</label>
-          <input className="w-full border rounded-xl px-3 py-2" value={author} onChange={(e) => setAuthor(e.target.value)} placeholder="e.g., Leigh" />
+          <input
+            className="w-full border rounded-xl px-3 py-2"
+            value={author}
+            onChange={(e) => setAuthor(e.target.value)}
+            placeholder="e.g., Leigh"
+          />
         </div>
         <div className="md:col-span-4">
           <label className="text-xs text-stone-600">Message</label>
-          <input className="w-full border rounded-xl px-3 py-2" value={body} onChange={(e) => setBody(e.target.value)} placeholder="Type your message" />
+          <input
+            className="w-full border rounded-xl px-3 py-2"
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            placeholder="Type your message"
+          />
         </div>
         <div className="md:col-span-6">
-          <button className="rounded-xl bg-black text-white px-4 py-2">Post</button>
+          <button className="rounded-xl bg-black text-white px-4 py-2">
+            Post
+          </button>
         </div>
       </form>
 
@@ -974,16 +1236,27 @@ function BoardPage() {
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 text-sm">
                     <span className="font-medium">{p.author}</span>
-                    <span className="text-stone-500">• {p.created_at ? new Date(p.created_at).toLocaleString() : ""}</span>
-                    {p.pinned ? <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">pinned</span> : null}
+                    <span className="text-stone-500">
+                      • {p.created_at ? new Date(p.created_at).toLocaleString() : ""}
+                    </span>
+                    {p.pinned ? (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
+                        pinned
+                      </span>
+                    ) : null}
                   </div>
-                  <div className="text-stone-800 whitespace-pre-wrap break-words">{p.body}</div>
+                  <div className="text-stone-800 whitespace-pre-wrap break-words">
+                    {p.body}
+                  </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <button onClick={() => togglePin(p)} className="text-xs underline">
                     {p.pinned ? "unpin" : "pin"}
                   </button>
-                  <button onClick={() => remove(p.id)} className="text-xs text-red-600 underline">
+                  <button
+                    onClick={() => remove(p.id)}
+                    className="text-xs text-red-600 underline"
+                  >
                     delete
                   </button>
                 </div>
@@ -996,9 +1269,9 @@ function BoardPage() {
   );
 }
 
-/* 🔧 Main App */
+/* 🔧 Main App — ALL pages wrapped in PageBg to fill the screen */
 export default function App() {
-  const data = useData();
+  const data = useReservations();
   const [rows, setRows] = useState<Reservation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1052,7 +1325,6 @@ export default function App() {
 
   return (
     <PasswordGate>
-      {/* Per-page full background (including header) */}
       {page === "reservations" ? (
         <PageBg image="/images/house-in-winter.jpg">
           <Section>
@@ -1062,7 +1334,9 @@ export default function App() {
           {/* 1) Make a reservation */}
           <Section>
             <section id="reserve" className="space-y-3">
-              <h2 className="text-lg font-semibold text-white drop-shadow">Make a reservation</h2>
+              <h2 className="text-lg font-semibold text-white drop-shadow">
+                Make a reservation
+              </h2>
               {loading ? (
                 <div className="text-white/90">Loading…</div>
               ) : error ? (
@@ -1077,7 +1351,10 @@ export default function App() {
           <Section>
             <section className="space-y-3">
               <h2 className="text-lg font-semibold text-white drop-shadow">
-                Master calendar <span className="text-sm font-normal text-white/90">(tap a date to reserve)</span>
+                Master calendar{" "}
+                <span className="text-sm font-normal text-white/90">
+                  (tap a date to reserve)
+                </span>
               </h2>
               <MasterCalendar rows={rows} onClickDate={openReserveForDate} />
             </section>
@@ -1086,7 +1363,9 @@ export default function App() {
           {/* 3) Reservations by room */}
           <Section>
             <section className="space-y-3">
-              <h2 className="text-lg font-semibold text-white drop-shadow">Reservations by room</h2>
+              <h2 className="text-lg font-semibold text-white drop-shadow">
+                Reservations by room
+              </h2>
               {loading ? (
                 <div className="text-white/90">Loading…</div>
               ) : error ? (
